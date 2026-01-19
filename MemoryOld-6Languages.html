@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f7f7f7;
+            margin: 0;
+            padding: 0;
+        }
+        h1 {
+            color: #333;
+            margin-top: 20px;
+        }
+        .selectors {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .game-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
+            justify-content: center;
+            margin: 20px auto;
+            max-width: 600px;
+        }
+        .card {
+            width: 100px;
+            height: 100px;
+            perspective: 1000px;
+            touch-action: manipulation;
+        }
+        .card-inner {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.5s;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+        }
+        .card.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+        .card-front, .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+        }
+        .card-back {
+            transform: rotateY(0deg);
+            color: white;
+        }
+        .card-front {
+            background-color: #ffffff;
+            color: #000000; /* Default text color */
+            transform: rotateY(180deg);
+        }
+        .card.front-invisible {
+            background-color: transparent; /* Clear for invisible mode */
+            color: white; /* Set text to white for blending */
+        }
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+        .stats {
+            font-size: 18px;
+            margin-top: 10px;
+        }
+        .input-container {
+            margin-top: 20px;
+        }
+        input[type="text"] {
+            width: 90%;
+            max-width: 400px;
+            padding: 5px;
+            font-size: 16px;
+        }
+        .found-words {
+            margin-top: 20px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            text-align: left;
+            padding: 0 20px;
+        }
+        .found-words p {
+            font-size: 16px;
+            cursor: pointer;
+            color: #333;
+            margin: 5px 0;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+
+<h1>Memory</h1>
+<p>Select a language, card color, or enter your own word list to find all matching word pairs!</p>
+
+<div class="selectors">
+    <label for="languageSelector">Select Language:</label>
+    <select id="languageSelector">
+        <option value="en">English</option>
+        <option value="es">Spanish</option>
+        <option value="ru">Russian</option>
+        <option value="ar">Arabic</option>
+        <option value="de">German</option>
+        <option value="ja">Japanese</option>
+    </select>
+    
+    <label for="colorSelector">Card Back Color:</label>
+    <select id="colorSelector" onchange="setCardColor()">
+        <option value="umichBlue" selected>Umich Blue</option>
+        <option value="umichMaize">Umich Maize</option>
+        <option value="gray">Gray</option>
+        <option value="blue">Blue</option>
+        <option value="red">Red</option>
+        <option value="purple">Purple</option>
+        <option value="orange">Orange</option>
+        <option value="yellow">Yellow</option>
+        <option value="green">Green</option>
+    </select>
+
+    <label for="invisibleModeToggle">Invisible Mode:</label>
+    <input type="checkbox" id="invisibleModeToggle" onchange="toggleInvisibleMode()">
+
+    <label for="soundToggle">Sound:</label>
+    <input type="checkbox" id="soundToggle" checked onchange="toggleSound()">
+</div>
+
+<div class="game-container" id="gameBoard">
+    <!-- Cards will be dynamically generated here -->
+</div>
+
+<button onclick="resetGame()">Restart Game</button>
+
+<div class="input-container">
+    <input type="text" id="csvInput" placeholder="Enter comma separated values here" />
+    <button onclick="submitCustomWords()">Submit Word List</button>
+</div>
+
+<div class="stats">
+    Turns: <span id="turns">0</span> | Words Found: <span id="wordsFound">0</span> | Timer: <span id="timer">0</span> seconds
+    <button onclick="saveResultsAsImage()">Save Results as Image</button>
+</div>
+
+<div class="found-words" id="foundWords">
+    <!-- Found words will be listed here -->
+</div>
+
+<script>
+    const languageWords = {
+        en: ['Apple', 'Banana', 'Cherry', 'Date', 'Elderberry', 'Fig', 'Grape', 'Honeydew', 'Iced', 'Jackfruit', 'Kiwi', 'Lemon', 'Mango', 'Nectarine', 'Orange', 'Papaya', 'Quince', 'Raspberry', 'Strawberry', 'Tomato'],
+        es: ['Manzana', 'Banana', 'Cereza', 'Dátil', 'Saúco', 'Higo', 'Uva', 'Melón', 'Hielo', 'Yaca', 'Kiwi', 'Limón', 'Mango', 'Nectarina', 'Naranja', 'Papaya', 'Membrillo', 'Frambuesa', 'Fresa', 'Tomate'],
+        ru: ['Яблоко', 'Банан', 'Вишня', 'Финик', 'Бузина', 'Инжир', 'Виноград', 'Дыня', 'Лед', 'Джекфрут', 'Киви', 'Лимон', 'Манго', 'Нектарин', 'Апельсин', 'Папайя', 'Айва', 'Малина', 'Клубника', 'Томат'],
+        ar: ['تفاح', 'موز', 'كرز', 'تمر', 'عنب', 'تين', 'رمان', 'شمام', 'ليمون', 'مانجو', 'خوخ', 'أناناس', 'فراولة', 'بطيخ', 'شمندر', 'برتقال', 'ليمون', 'مشمش', 'جوافة', 'بابايا'],
+        de: ['Apfel', 'Banane', 'Kirsche', 'Dattel', 'Elderbeere', 'Feige', 'Traube', 'Honigmelone', 'Eis', 'Jackfrucht', 'Kiwi', 'Zitrone', 'Mango', 'Nektarine', 'Orange', 'Papaya', 'Quitte', 'Himbeere', 'Erdbeere', 'Tomate'],
+        ja: ['りんご', 'バナナ', 'さくらんぼ', 'デーツ', 'ブルーベリー', 'いちじく', 'ぶどう', 'メロン', 'レモン', 'マンゴー', '桃', 'パイナップル', 'いちご', 'スイカ', 'ビーツ', 'オレンジ', 'レモン', '杏', 'グアバ', 'パパイヤ']
+    };
+
+    const colorOptions = {
+        umichBlue: "#00274C",
+        umichMaize: "#FFCB05",
+        gray: "#6e6e6e",
+        blue: "#007bff",
+        red: "#dc3545",
+        purple: "#6f42c1",
+        orange: "#fd7e14",
+        yellow: "#ffc107",
+        green: "#28a745"
+    };
+
+    let customWords = [];
+    let language = 'en';
+    let words = [];
+    let firstCard = null;
+    let secondCard = null;
+    let lockBoard = false;
+    let matchedPairs = 0;
+    let turns = 0;
+    let startTime;
+    let timerInterval;
+    let cardBackColor = colorOptions.umichBlue;
+    let soundEnabled = true; // Sound is enabled by default
+    let invisibleMode = false; // Invisible mode is off by default
+
+    function createBoard() {
+        language = document.getElementById('languageSelector').value;
+        words = customWords.length > 0 ? [...customWords, ...customWords] : [...languageWords[language].slice(0, 15), ...languageWords[language].slice(0, 15)];
+        const shuffledWords = shuffleArray(words);
+        const gameBoard = document.getElementById('gameBoard');
+        gameBoard.innerHTML = ''; // Clear previous cards
+
+        shuffledWords.forEach((word) => {
+            const card = document.createElement('div');
+            card.classList.add('card');
+            const cardInner = document.createElement('div');
+            cardInner.classList.add('card-inner');
+            const cardBack = document.createElement('div');
+            cardBack.classList.add('card-back');
+            cardBack.style.backgroundColor = cardBackColor;
+            const cardFront = document.createElement('div');
+            cardFront.classList.add('card-front');
+
+            // Apply invisible mode style if enabled
+            if (invisibleMode) {
+                cardFront.classList.add('front-invisible'); // Apply invisible mode style
+                cardFront.style.color = 'white'; // Set text color to white for blending
+            }
+
+            cardFront.textContent = word;
+
+            cardInner.appendChild(cardBack);
+            cardInner.appendChild(cardFront);
+            card.appendChild(cardInner);
+            card.dataset.word = word;
+            card.addEventListener('click', flipCard);
+            gameBoard.appendChild(card);
+        });
+
+        startTime = null;
+        turns = 0;
+        matchedPairs = 0;
+        clearInterval(timerInterval);
+        document.getElementById('timer').textContent = '0';
+        document.getElementById('turns').textContent = turns;
+        document.getElementById('wordsFound').textContent = matchedPairs;
+        document.getElementById('foundWords').innerHTML = '';
+    }
+
+    function flipCard() {
+        if (lockBoard || this === firstCard) return;
+
+        this.classList.add('flipped');
+        if (!startTime) {
+            startTime = Date.now();
+            startTimer();
+        }
+
+        if (soundEnabled) {
+            playSound(this.dataset.word);
+        }
+
+        if (!firstCard) {
+            firstCard = this;
+            return;
+        }
+
+        secondCard = this;
+        checkForMatch();
+    }
+
+    function checkForMatch() {
+        turns++;
+        document.getElementById('turns').textContent = turns;
+
+        const isMatch = firstCard.dataset.word === secondCard.dataset.word;
+        if (isMatch) {
+            matchedPairs++;
+            document.getElementById('wordsFound').textContent = matchedPairs;
+            addFoundWord(firstCard.dataset.word);
+            disableCards();
+        } else {
+            unflipCards();
+        }
+    }
+
+    function disableCards() {
+        firstCard.classList.add('matched');
+        secondCard.classList.add('matched');
+        resetBoard();
+    }
+
+    function unflipCards() {
+        lockBoard = true;
+        setTimeout(() => {
+            firstCard.classList.remove('flipped');
+            secondCard.classList.remove('flipped');
+            resetBoard();
+        }, 1000);
+    }
+
+    function resetBoard() {
+        [firstCard, secondCard] = [null, null];
+        lockBoard = false;
+    }
+
+    function resetGame() {
+        matchedPairs = 0;
+        customWords = [];
+        createBoard();
+    }
+
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    function startTimer() {
+        timerInterval = setInterval(() => {
+            const timeElapsed = Math.floor((Date.now() - startTime) / 1000);
+            document.getElementById('timer').textContent = timeElapsed;
+        }, 1000);
+    }
+
+    function playSound(word) {
+        if (!soundEnabled) return; // Do not play sound if disabled
+
+        const synth = window.speechSynthesis;
+        const utterance = new SpeechSynthesisUtterance(word);
+        utterance.lang = {
+            en: 'en-US', es: 'es-ES', ru: 'ru-RU', ar: 'ar-SA', de: 'de-DE', ja: 'ja-JP'
+        }[language];
+        synth.speak(utterance);
+    }
+
+    function addFoundWord(word) {
+        const foundWordsContainer = document.getElementById('foundWords');
+        const wordElement = document.createElement('p');
+        wordElement.textContent = word;
+        wordElement.addEventListener('click', () => playSound(word));
+        foundWordsContainer.appendChild(wordElement);
+    }
+
+    function submitCustomWords() {
+        const csvInput = document.getElementById('csvInput').value.trim();
+        customWords = csvInput.split(',').map(word => word.trim());
+        if (customWords.length < 14) {
+            alert("Please enter at least 14 unique words to create a full game.");
+            customWords = [];
+        } else {
+            resetGame();
+        }
+    }
+
+    function setCardColor() {
+        const color = document.getElementById('colorSelector').value;
+        cardBackColor = colorOptions[color];
+        resetGame();
+    }
+
+    function saveResultsAsImage() {
+        const dateTime = new Date().toLocaleString(); // Get the current date and time
+        const resultsContent = `
+            Date: ${dateTime}
+            Turns: ${turns}
+            Words Found: ${matchedPairs}
+            Timer: ${document.getElementById('timer').textContent} seconds
+            Found Words: ${Array.from(document.getElementById('foundWords').children).map(p => p.textContent).join(', ')}
+        `;
+
+        // Create a temporary container for the results
+        const resultsContainer = document.createElement('div');
+        resultsContainer.style.fontSize = '20px';
+        resultsContainer.style.padding = '20px';
+        resultsContainer.style.backgroundColor = '#fff';
+        resultsContainer.style.border = '1px solid #ccc';
+        resultsContainer.style.display = 'inline-block';
+        resultsContainer.innerText = resultsContent;
+
+        document.body.appendChild(resultsContainer);
+
+        // Capture the content and save as image
+        html2canvas(resultsContainer).then(canvas => {
+            const imgData = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = imgData;
+            link.download = 'memory_game_results.png'; // Set the name for the downloaded image
+            link.click();
+            document.body.removeChild(resultsContainer); // Clean up the temporary div
+        });
+    }
+
+    function toggleInvisibleMode() {
+        invisibleMode = document.getElementById('invisibleModeToggle').checked;
+        createBoard(); // Recreate board to apply invisible mode
+    }
+
+    function toggleSound() {
+        soundEnabled = document.getElementById('soundToggle').checked;
+    }
+
+    document.getElementById('languageSelector').addEventListener('change', resetGame);
+    createBoard();
+</script>
+
+</body>
+</html>
